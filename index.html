@@ -1231,7 +1231,14 @@ function limparFiltrosAud() {
 function populateFiltroComarca() {
   const dl = document.getElementById('aud-comarca-list');
   if (!dl) return;
-  const comarcas = [...new Set(audiencias.map(a => a.comarca).filter(Boolean))].sort();
+  const filtroDE  = (document.getElementById('aud-filtro-de')  || {}).value || '';
+  const filtroATE = (document.getElementById('aud-filtro-ate') || {}).value || '';
+  const base = audiencias.filter(a => {
+    if (filtroDE  && a.dataISO && a.dataISO < filtroDE)  return false;
+    if (filtroATE && a.dataISO && a.dataISO > filtroATE) return false;
+    return true;
+  });
+  const comarcas = [...new Set(base.map(a => a.comarca).filter(Boolean))].sort();
   dl.innerHTML = comarcas.map(c => `<option value="${c}">`).join('');
 }
 
