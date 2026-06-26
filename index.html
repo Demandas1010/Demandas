@@ -1510,6 +1510,13 @@ function gerarRelatorio() {
   // Honorários = Total - Preposto (o preposto já está dentro do Total de cada linha)
   const totalAudiencias = totalGeral - totalPreposto;
 
+  // Pré-calcula externas com cobrança no período para incluir no total do cabeçalho
+  const externasComCobrancaTop = audienciasExternas.filter(a =>
+    a.valorCobranca > 0 && a.dataISO && a.dataISO >= inicio && a.dataISO <= fim
+  );
+  const totalExternasTop = externasComCobrancaTop.reduce((s, a) => s + a.valorCobranca, 0);
+  const totalGeralComExternas = totalGeral + totalExternasTop;
+
   // Formata período
   const fmtDate = iso => {
     const [y,m,d] = iso.split('-');
@@ -1522,7 +1529,7 @@ function gerarRelatorio() {
   document.getElementById('rel-qtd').textContent = filtradas.length;
   document.getElementById('rel-preposto').textContent = qtdPreposto;
   document.getElementById('rel-honorarios').textContent = `R$ ${fmtBRL(totalAudiencias)}`;
-  document.getElementById('rel-total').textContent = `R$ ${fmtBRL(totalGeral)}`;
+  document.getElementById('rel-total').textContent = `R$ ${fmtBRL(totalGeralComExternas)}`;
   document.getElementById('rel-data-geracao').textContent = new Date().toLocaleDateString('pt-BR');
 
   // Tabela detalhada
@@ -1563,6 +1570,28 @@ function gerarRelatorio() {
     </tr>`;
   });
 
+  // Inclui audiências externas com cobrança no período
+  const externasComCobranca = audienciasExternas.filter(a =>
+    a.valorCobranca > 0 && a.dataISO && a.dataISO >= inicio && a.dataISO <= fim
+  );
+  let totalExternas = 0;
+  externasComCobranca.forEach(a => {
+    totalExternas += a.valorCobranca;
+    tbody.innerHTML += `<tr style="background:#fffbf0;">
+      <td class="muted">${linha++}</td>
+      <td>${a.data}</td>
+      <td><strong>${a.comarca}</strong></td>
+      <td class="muted" style="font-size:11px;">${a.vara || ''}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.autor}</td>
+      <td class="muted" style="font-size:11px;font-family:monospace;word-break:break-all;min-width:120px;">${a.processo}</td>
+      <td style="font-size:11px;"><span style="background:#fff3cd;color:#856404;font-size:10px;font-weight:600;padding:2px 6px;border-radius:8px;">Ext.</span> ${(a.tipo||'').replace('AUDIÊNCIA DE ','').replace('AUDIÊNCIA ','')}</td>
+      <td class="muted" style="font-size:11px;">Preposto</td>
+      <td class="muted" style="font-size:11px;">—</td>
+      <td style="font-weight:700;color:var(--gold);">R$ ${fmtBRL(a.valorCobranca)}</td>
+    </tr>`;
+  });
+  totalGeral += totalExternas;
+
   tfoot.innerHTML = `
     <tr>
       <td colspan="7" style="text-align:right; color:var(--ink-soft);">Honorários de audiência</td>
@@ -1572,6 +1601,10 @@ function gerarRelatorio() {
       <td colspan="7" style="text-align:right; color:var(--ink-soft);">Preposto (${qtdPreposto} audiência${qtdPreposto !== 1 ? 's' : ''})</td>
       <td colspan="3" style="font-weight:700; color:var(--gold);">R$ ${fmtBRL(totalPreposto)}</td>
     </tr>
+    ${externasComCobranca.length > 0 ? `<tr>
+      <td colspan="7" style="text-align:right; color:var(--ink-soft);">Audiências externas (${externasComCobranca.length})</td>
+      <td colspan="3" style="font-weight:700; color:#856404;">R$ ${fmtBRL(totalExternas)}</td>
+    </tr>` : ''}
     <tr style="border-top:2px solid var(--gold);">
       <td colspan="7" style="text-align:right; font-weight:700; font-size:14px;">TOTAL A RECEBER</td>
       <td colspan="3" style="font-weight:700; font-size:16px; color:var(--gold);">R$ ${fmtBRL(totalGeral)}</td>
@@ -1755,6 +1788,7 @@ const ADVS_OUTROS   = ['Lucas Fernandes','Ludmila Bulcão'];
 const PREPOSTOS_DEFAULT = ['Luiz Vitor','Janilson Lisboa','Lucas Aragão'];
 let PREPOSTOS_MM = JSON.parse(localStorage.getItem('mm_prepostos') || JSON.stringify(PREPOSTOS_DEFAULT));
 let _modalAudIdx = -1; // índice da audiência aberta no modal
+let _modalExtIdx = -1;  // índice da audiência externa aberta no modal
 
 // PREPOSTOS_TODOS = prepostos MM + advogados (para o dropdown de troca)
 const ADVS_FIXOS = ['Fernando Cordero','Aline Florencio','Lucas Fernandes','Ludmila Bulcão'];
@@ -2073,6 +2107,32 @@ function abrirModal(a) {
     </div>` :
     (() => { const pc=PREP_CORES[a.preposto]||'#555'; const pb=PREP_BG[a.preposto]||'#f5f5f5'; return row('Preposto', `<span style="background:${pb};color:${pc};font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid ${pc}30;">👤 ${a.preposto||'—'}</span>`); })();
 
+  // Detecta e indexa audiência externa para cobrança
+  _modalExtIdx = -1;
+  if (isExt) {
+    _modalExtIdx = audienciasExternas.findIndex(x => x.processo === a.processo && x.dataISO === a.dataISO);
+  }
+
+  // Bloco de cobrança — só para externa e admin
+  const cobValAtual = (isExt && a.valorCobranca > 0) ? a.valorCobranca : '';
+  const cobStatus   = (isExt && a.valorCobranca > 0)
+    ? `<span style="background:#e8f5ee;color:#2d7a4f;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;">✅ Cobrança registrada: R$ ${fmtBRL(a.valorCobranca)}</span>`
+    : `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 10px;border-radius:10px;">Sem cobrança registrada</span>`;
+
+  const cobBlock = (isExt && isAdmin) ? `
+    <div style="border-top:2px dashed var(--gold);margin:12px 0 8px;padding-top:12px;">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);margin-bottom:8px;">💰 Cobrança de Audiência Externa</div>
+      <div style="margin-bottom:8px;">${cobStatus}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--ink-soft);">Valor (R$):</span>
+        <input id="modal-cob-valor" type="number" min="0" step="0.01" value="${cobValAtual}"
+          placeholder="Ex: 150"
+          style="width:130px;padding:7px 10px;border:1.5px solid var(--gold);border-radius:8px;font-size:13px;font-family:Inter,sans-serif;outline:none;">
+        <button class="btn btn-primary btn-sm" onclick="salvarCobrancaExterno()" style="background:var(--gold);">💾 Salvar Cobrança</button>
+        ${a.valorCobranca > 0 ? '<button class="btn btn-outline btn-sm" onclick="removerCobrancaExterno()" style="color:var(--red);border-color:var(--red);">✕ Remover</button>' : ''}
+      </div>
+    </div>` : '';
+
   document.getElementById('modal-body').innerHTML = `
     ${row('Autor', a.autor)}
     ${row('Processo', `<span style="font-family:monospace;">${a.processo||''}</span>`)}
@@ -2083,6 +2143,7 @@ function abrirModal(a) {
     ${isExt ? '<div style="background:#fff3cd;color:#856404;font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;margin-bottom:4px;">📋 Audiência externa — escritório participa como preposto</div>' : ''}
     ${advBlock}
     ${prepBlock}
+    ${cobBlock}
     ${a.conflito ? '<div style="background:#fdeaec;color:#c0392b;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-top:4px;">⚠️ Conflito de horário detectado — verificar alocação</div>' : ''}
   `;
 
@@ -2142,9 +2203,45 @@ function salvarModalAlteracoes() {
   }
 }
 
+function salvarCobrancaExterno() {
+  if (_modalExtIdx < 0 || _modalExtIdx >= audienciasExternas.length) {
+    alert('Não foi possível identificar a audiência externa.'); return;
+  }
+  const input = document.getElementById('modal-cob-valor');
+  const valor = parseFloat(input.value);
+  if (isNaN(valor) || valor <= 0) { alert('Informe um valor válido maior que zero.'); return; }
+
+  audienciasExternas[_modalExtIdx].valorCobranca = valor;
+  localStorage.setItem('mm_audiencias_externas', JSON.stringify(audienciasExternas));
+  sbSalvar('audiencias_externas', audienciasExternas);
+
+  // Feedback no botão
+  const btn = document.querySelector('#modal-body .btn-primary');
+  if (btn) { btn.textContent = '✅ Salvo!'; btn.disabled = true;
+    setTimeout(() => { btn.textContent = '💾 Salvar Cobrança'; btn.disabled = false; }, 2000); }
+
+  // Atualiza status visual
+  const statusEl = document.querySelector('#modal-body span[style*="Sem cobrança"], #modal-body span[style*="registrada"]');
+  if (statusEl) {
+    statusEl.style.background = '#e8f5ee'; statusEl.style.color = '#2d7a4f';
+    statusEl.textContent = `✅ Cobrança registrada: R$ ${fmtBRL(valor)}`;
+  }
+}
+
+function removerCobrancaExterno() {
+  if (_modalExtIdx < 0 || _modalExtIdx >= audienciasExternas.length) return;
+  if (!confirm('Remover a cobrança desta audiência?')) return;
+  delete audienciasExternas[_modalExtIdx].valorCobranca;
+  localStorage.setItem('mm_audiencias_externas', JSON.stringify(audienciasExternas));
+  sbSalvar('audiencias_externas', audienciasExternas);
+  // Reabre o modal para refletir o estado atualizado
+  abrirModal(audienciasExternas[_modalExtIdx]);
+}
+
 function fecharModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   _modalAudIdx = -1;
+  _modalExtIdx = -1;
 }
 
 
