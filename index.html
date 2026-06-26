@@ -805,7 +805,7 @@ async function inicializarDados() {
     if (audExt !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); }
     if (preps  !== null) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); }
     if (users  !== null) { Object.assign(USUARIOS, users); localStorage.setItem('mm_usuarios', JSON.stringify(users)); }
-    if (tabela !== null) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); }
+    if (tabela !== null) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); tabelaPrecos = tabela; }
   } catch(e) { console.warn('Erro ao inicializar:', e); }
   if (loadEl) loadEl.style.display = 'none';
 }
@@ -1261,10 +1261,12 @@ function calcDesconto(comarca, qtdNoDia) {
 
 function calcTotal(a, qtdNoDia) {
   if (!a.realizada) return 0;
-  // Comarca com contrato mensal (valorBase = 0): cobra só preposto
-  const desc = (a.valorBase && a.valorBase > 0) ? calcDesconto(a.comarca, qtdNoDia) : 0;
-  const honorario = (a.valorBase && a.valorBase > 0) ? a.valorBase * (1 - desc) : 0;
-  // Audiências MM sempre têm preposto — usa sempre o valor da comarca
+  // Sempre lê o valor ATUAL da tabela de preços (ignora o valorBase gravado na importação)
+  const valorTabela = getValorBase(a.comarca);
+  const vBase = (valorTabela !== null) ? valorTabela : (a.valorBase ?? 0);
+  const desc = (vBase > 0) ? calcDesconto(a.comarca, qtdNoDia) : 0;
+  const honorario = (vBase > 0) ? vBase * (1 - desc) : 0;
+  // Audiências MM sempre têm preposto — usa sempre o valor atual da comarca
   const preposto = getValorPreposto(a.comarca);
   return honorario + preposto;
 }
@@ -1352,7 +1354,7 @@ function renderAudiencias() {
     const total = calcTotal(a, qtd);
     if (a.realizada) { totalGeral += total; totalRealizadas++; }
 
-    const valorAud  = (a.valorBase && a.valorBase > 0) ? a.valorBase : 0;
+    const _vTabela = getValorBase(a.comarca); const valorAud = (_vTabela !== null) ? _vTabela : (a.valorBase && a.valorBase > 0) ? a.valorBase : 0;
     const descPct   = (valorAud > 0 && a.realizada) ? calcDesconto(a.comarca, qtd) : 0;
     const valorPrep = getValorPreposto(a.comarca);
     const audLabel  = valorAud > 0
