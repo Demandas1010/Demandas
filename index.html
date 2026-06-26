@@ -1775,13 +1775,23 @@ function advBg(nome)   { return ADV_BG[advNome(nome)]     || ADV_BG[nome]     ||
 function prepCor(nome) { return PREP_CORES[advNome(nome)] || PREP_CORES[nome] || '#555'; }
 function prepBg(nome)  { return PREP_BG[advNome(nome)]    || PREP_BG[nome]    || '#f0f0f0'; }
 
+// Verifica se duas chaves (data|hora) têm conflito: mesmo dia e ≤ 10 min de diferença
+function chavesConflitam(chave1, chave2) {
+  const [data1, hora1='00:00'] = chave1.split('|');
+  const [data2, hora2='00:00'] = chave2.split('|');
+  if (data1 !== data2) return false;
+  const [h1, m1] = hora1.split(':').map(Number);
+  const [h2, m2] = hora2.split(':').map(Number);
+  return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) <= 10;
+}
+
 function alocarPauta(lista, agenda, chave) {
   // Inicializa agenda de todos
   lista.forEach(n => { if (!agenda[n]) agenda[n] = new Set(); });
 
-  // Separa quem tem conflito de horário de quem não tem
-  const semConflito = lista.filter(n => !agenda[n].has(chave));
-  
+  // Separa quem tem conflito de horário de quem não tem (mesmo horário ou dentro de 10 min)
+  const semConflito = lista.filter(n => ![...agenda[n]].some(c => chavesConflitam(c, chave)));
+
   if (semConflito.length > 0) {
     // Entre os disponíveis no horário, escolhe quem tem MENOS audiências no total
     semConflito.sort((a, b) => agenda[a].size - agenda[b].size);
