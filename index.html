@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestão de Audiências — Melo e Meireles</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
 
@@ -290,6 +291,12 @@
     </div>
   </div>
 </div>
+
+<div id="sb-loading" style="display:none;position:fixed;inset:0;background:rgba(26,26,46,0.85);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+  <div style="width:48px;height:48px;border:4px solid rgba(201,168,76,0.3);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <span style="color:#fff;font-family:Inter,sans-serif;font-size:14px;opacity:0.9;">Carregando dados...</span>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <header>
   <div class="logo" style="display:flex;align-items:center;gap:12px;">
@@ -754,6 +761,45 @@
 </main>
 
 <script>
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://rxihxsgdtkuwhdvlmvsd.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4aWh4c2dkdGt1d2hkdmxtdnNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MDk0NjIsImV4cCI6MjA5Nzk4NTQ2Mn0.SpPuB9tPSyvNZjulNL25tTVLQX8e7yWUSeF2qY8cBVA';
+const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function sbSalvar(id, dados) {
+  try {
+    await SB.from('mm_sistema').upsert({ id, dados, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+  } catch(e) { console.warn('Supabase save error:', e); }
+}
+
+async function sbCarregar(id) {
+  try {
+    const { data, error } = await SB.from('mm_sistema').select('dados').eq('id', id).maybeSingle();
+    if (error || !data) return null;
+    return data.dados;
+  } catch(e) { console.warn('Supabase load error:', e); return null; }
+}
+
+async function inicializarDados() {
+  const loadEl = document.getElementById('sb-loading');
+  if (loadEl) loadEl.style.display = 'flex';
+  try {
+    const [aud, audExt, preps, users, tabela] = await Promise.all([
+      sbCarregar('audiencias'),
+      sbCarregar('audiencias_externas'),
+      sbCarregar('prepostos'),
+      sbCarregar('usuarios'),
+      sbCarregar('tabela_precos'),
+    ]);
+    if (aud       !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    }
+    if (audExt    !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); }
+    if (preps     !== null) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); salvarPrepostos(); }
+    if (users     !== null) { Object.assign(USUARIOS, users); localStorage.setItem('mm_usuarios',    JSON.stringify(users));   }
+    if (tabela    !== null) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); }
+  } catch(e) { console.warn('Erro ao inicializar:', e); }
+  if (loadEl) loadEl.style.display = 'none';
+}
+
 // ─── TABELA DE PREÇOS (padrão — sobrescrita pelo localStorage) ──────────────
 const TABELA_PRECOS_DEFAULT = [
   {comarca:"Abaetetuba",    valor:300, preposto:50, semDesconto:false},
@@ -870,6 +916,7 @@ function loadTabelaPrecos() {
 }
 function saveTabelaPrecos(tabela) {
   localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela));
+  sbSalvar('tabela_precos', tabela);
 }
 let tabelaPrecos = loadTabelaPrecos();
 
@@ -1165,7 +1212,7 @@ function confirmarImportacao() {
       const existKeys = new Set(audienciasExternas.map(a => a.dataISO+'|'+a.processo));
       const novas = externas.filter(e => !existKeys.has(e.dataISO+'|'+e.processo));
       audienciasExternas.push(...novas);
-      localStorage.setItem('mm_audiencias_externas', JSON.stringify(audienciasExternas));
+      localStorage.setItem('mm_audiencias_externas', JSON.stringify(audienciasExternas)); sbSalvar('audiencias_externas', audienciasExternas);
     }
   } catch(err) {
     console.error('Erro ao importar externas:', err);
@@ -1532,9 +1579,8 @@ function fmtBRL(v) {
 
 // ─── PERSISTÊNCIA ────────────────────────────────────────────────────────────
 function salvar() {
-  console.log('salvar chamado, total:', audiencias.length);
   localStorage.setItem('mm_audiencias', JSON.stringify(audiencias));
-  console.log('salvo em localStorage');
+  sbSalvar('audiencias', audiencias);
 }
 
 
@@ -1704,6 +1750,7 @@ let PREPOSTOS_TODOS = [...PREPOSTOS_MM, ...ADVS_FIXOS];
 
 function salvarPrepostos() {
   localStorage.setItem('mm_prepostos', JSON.stringify(PREPOSTOS_MM));
+  sbSalvar('prepostos', PREPOSTOS_MM);
   // Recalcula PREPOSTOS_TODOS
   PREPOSTOS_TODOS.length = 0;
   PREPOSTOS_MM.forEach(p => PREPOSTOS_TODOS.push(p));
@@ -2109,38 +2156,38 @@ function fazerLogin() {
 
   usuarioLogado = { ...u, login: user };
   erro.style.display = 'none';
-  document.getElementById('login-screen').style.display = 'none';
 
-  // Update header
-  const isAdmin = u.perfil === 'admin';
-  const navBtns = document.querySelectorAll('nav button');
-  // Hide admin tabs for non-admins
-  if (!isAdmin) {
-    navBtns[0].style.display = 'none'; // Importar
-    navBtns[1].style.display = 'none'; // Audiências
-    navBtns[2].style.display = 'none'; // Prestação de contas
-    navBtns[3].style.display = 'none'; // Tabela de preços
-    navBtns[4].style.display = ''; // Pauta
-    navBtns[5].style.display = 'none'; // Nova Audiência
-    navBtns[6].style.display = 'none'; // Config
-    showPageDirect('pauta');
-  } else {
-    // Admin vê tudo
-    navBtns.forEach(b => b.style.display = '');
-  }
+  // Carregar dados frescos do Supabase antes de mostrar o sistema
+  inicializarDados().then(() => {
+    document.getElementById('login-screen').style.display = 'none';
 
-  document.getElementById('user-info').innerHTML = `
-    <span style="color:rgba(255,255,255,0.7);font-size:13px;">Olá, <strong style="color:var(--gold-light);">${u.nome}</strong></span>
-    <button onclick="fazerLogout()" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.2);">Sair</button>
-  `;
+    const isAdmin = u.perfil === 'admin';
+    const navBtns = document.querySelectorAll('nav button');
+    if (!isAdmin) {
+      navBtns[0].style.display = 'none';
+      navBtns[1].style.display = 'none';
+      navBtns[2].style.display = 'none';
+      navBtns[3].style.display = 'none';
+      navBtns[4].style.display = '';
+      navBtns[5].style.display = 'none';
+      navBtns[6].style.display = 'none';
+      showPageDirect('pauta');
+    } else {
+      navBtns.forEach(b => b.style.display = '');
+    }
 
-  // Mostra filtros de pessoa só para admin
-  const filtroDiv = document.getElementById('pauta-filtros-pessoa');
-  if (filtroDiv) {
-    filtroDiv.style.display = isAdmin ? 'flex' : 'none';
-    if (isAdmin) atualizarSelectsPrepostos();
-  }
-  if (!isAdmin) renderPauta();
+    document.getElementById('user-info').innerHTML = `
+      <span style="color:rgba(255,255,255,0.7);font-size:13px;">Olá, <strong style="color:var(--gold-light);">${u.nome}</strong></span>
+      <button onclick="fazerLogout()" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.2);">Sair</button>
+    `;
+
+    const filtroDiv = document.getElementById('pauta-filtros-pessoa');
+    if (filtroDiv) {
+      filtroDiv.style.display = isAdmin ? 'flex' : 'none';
+      if (isAdmin) atualizarSelectsPrepostos();
+    }
+    if (!isAdmin) renderPauta();
+  });
 }
 
 function fazerLogout() {
@@ -2303,6 +2350,7 @@ function atualizarSelectsPrepostos() {
 
 function salvarUsuarios() {
   localStorage.setItem('mm_usuarios', JSON.stringify(USUARIOS));
+  sbSalvar('usuarios', USUARIOS);
 }
 
 function renderConfig() {
@@ -2573,7 +2621,7 @@ function salvarAudienciaCadastrada() {
     audiencias.push(nova);
   } else {
     audienciasExternas.push(nova);
-    localStorage.setItem('mm_audiencias_externas', JSON.stringify(audienciasExternas));
+    localStorage.setItem('mm_audiencias_externas', JSON.stringify(audienciasExternas)); sbSalvar('audiencias_externas', audienciasExternas);
   }
   salvar();
 
