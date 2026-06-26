@@ -2013,6 +2013,7 @@ function trocarPreposto(dataISO, processo, novoPreposto, select) {
   const idx = audiencias.findIndex(a => a.dataISO === dataISO && a.processo === processo);
   if (idx >= 0) {
     audiencias[idx].preposto = novoPreposto;
+    audiencias[idx]._pinned  = true; // preserva escolha manual na re-renderização
     salvar();
   }
   // Atualiza visual do select
