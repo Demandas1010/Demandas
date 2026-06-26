@@ -220,11 +220,39 @@
   /* PRINT / PDF */
   @media print {
     header, nav, .no-print { display: none !important; }
-    body { background: white; }
+    body { background: white; font-size: 10px; }
+    main { padding: 0 !important; max-width: 100% !important; }
     .page { display: none !important; }
     #page-relatorio { display: block !important; }
     #relatorio-empty { display: none !important; }
     #relatorio-output { display: block !important; }
+    /* Tabela do relatório - layout compacto */
+    #rel-body td, #rel-foot td, #rel-body th, #rel-foot th {
+      font-size: 8.5px !important;
+      padding: 4px 5px !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+    /* Processo: fonte menor, quebra para caber em menos espaço */
+    #rel-body td:nth-child(6) {
+      font-family: monospace !important;
+      font-size: 7.5px !important;
+      letter-spacing: -0.3px;
+      word-break: break-all;
+      max-width: 100px;
+    }
+    /* Total (última coluna): não quebra nunca */
+    #rel-body td:last-child, #rel-foot td:last-child {
+      white-space: nowrap !important;
+      font-weight: 700;
+    }
+    thead th { font-size: 8px !important; padding: 5px !important; }
+    table { font-size: 8.5px !important; }
+    .card { box-shadow: none !important; border: 1px solid #ddd !important; margin-bottom: 10px !important; padding: 14px !important; }
+    .stat-value { font-size: 18px !important; }
+    /* Evita quebra de linha no meio de uma linha da tabela */
+    #rel-body tr { page-break-inside: avoid; }
   }
 
   /* RESPONSIVE */
@@ -353,6 +381,22 @@
         <div class="stat-label">Valor Total</div>
         <div class="stat-value gold" id="stat-valor">R$ 0</div>
         <div class="stat-sub">realizadas</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;" id="aud-filtros-card">
+      <div class="card-title">Filtrar Audiências</div>
+      <div class="filter-bar" style="flex-wrap:wrap; gap:12px;">
+        <label>De:</label>
+        <input type="date" id="aud-filtro-de" onchange="renderAudiencias()">
+        <label>Até:</label>
+        <input type="date" id="aud-filtro-ate" onchange="renderAudiencias()">
+        <label>Município:</label>
+        <datalist id="aud-comarca-list"></datalist>
+        <input type="text" id="aud-filtro-comarca" list="aud-comarca-list"
+          placeholder="Digite o município..." oninput="renderAudiencias()"
+          style="min-width:180px; padding:8px 12px; border:1.5px solid var(--border); border-radius:8px; font-family:Inter,sans-serif; font-size:13px; color:var(--ink); background:var(--white);">
+        <button class="btn btn-outline btn-sm" onclick="limparFiltrosAud()" style="white-space:nowrap;">✕ Limpar filtros</button>
       </div>
     </div>
 
@@ -1065,7 +1109,7 @@ function renderPreview() {
     const somentePreposto = (a.valorBase === null || a.valorBase === 0);
     const valorLabel = somentePreposto
       ? '<span style="color:var(--ink-faint);font-size:11px;">Contrato mensal</span>'
-      : `R$ ${a.valorBase.toFixed(2).replace('.',',')}`;
+      : `R$ ${fmtBRL(a.valorBase)}`;
     const prepostoLabel = `<span class="badge badge-gold">+R$ ${valorPrep.toFixed(0)}</span>`;
     const tipoLabel = a.tipo.replace('AUDIÊNCIA DE ','').replace('AUDIÊNCIA ','');
     tbody.innerHTML += `<tr id="prev-row-${idx}" style="opacity:1;transition:opacity 0.2s;">
@@ -1174,9 +1218,34 @@ function getQtdNoDia(audiencia) {
   ).length;
 }
 
+function limparFiltrosAud() {
+  const de = document.getElementById('aud-filtro-de');
+  const ate = document.getElementById('aud-filtro-ate');
+  const com = document.getElementById('aud-filtro-comarca');
+  if (de) de.value = '';
+  if (ate) ate.value = '';
+  if (com) com.value = '';
+  renderAudiencias();
+}
+
+function populateFiltroComarca() {
+  const dl = document.getElementById('aud-comarca-list');
+  if (!dl) return;
+  const comarcas = [...new Set(audiencias.map(a => a.comarca).filter(Boolean))].sort();
+  dl.innerHTML = comarcas.map(c => `<option value="${c}">`).join('');
+}
+
 function renderAudiencias() {
   const tbody = document.getElementById('audiencias-body');
   const tfoot = document.getElementById('audiencias-foot');
+
+  // Lê filtros
+  const filtroDE  = (document.getElementById('aud-filtro-de')  || {}).value || '';
+  const filtroATE = (document.getElementById('aud-filtro-ate') || {}).value || '';
+  const filtroComarca = ((document.getElementById('aud-filtro-comarca') || {}).value || '').trim().toLowerCase();
+
+  // Atualiza datalist de municípios
+  populateFiltroComarca();
 
   if (audiencias.length === 0) {
     tbody.innerHTML = `<tr><td colspan="10"><div class="empty"><div class="icon">📋</div><h3>Nenhuma audiência importada</h3><p>Importe uma pauta semanal para começar.</p></div></td></tr>`;
@@ -1185,32 +1254,54 @@ function renderAudiencias() {
     return;
   }
 
+  // Aplica filtros e ordena por data/hora
+  const lista = audiencias.filter((a, _idx) => {
+    if (filtroDE  && a.dataISO && a.dataISO < filtroDE)  return false;
+    if (filtroATE && a.dataISO && a.dataISO > filtroATE) return false;
+    if (filtroComarca && !(a.comarca || '').toLowerCase().includes(filtroComarca)) return false;
+    return true;
+  }).sort((a, b) => {
+    const da = a.dataISO || '';
+    const db = b.dataISO || '';
+    if (da !== db) return da < db ? -1 : 1;
+    const ha = a.hora || '';
+    const hb = b.hora || '';
+    return ha < hb ? -1 : ha > hb ? 1 : 0;
+  });
+
   tbody.innerHTML = '';
   let totalGeral = 0;
   let totalRealizadas = 0;
 
-  audiencias.forEach((a, idx) => {
+  if (lista.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty"><div class="icon">🔍</div><h3>Nenhuma audiência encontrada</h3><p>Ajuste ou limpe os filtros acima.</p></div></td></tr>`;
+    tfoot.innerHTML = '';
+    updateStats();
+    return;
+  }
+
+  lista.forEach((a, _i) => {
+    // índice real no array original para toggles funcionarem
+    const idx = audiencias.indexOf(a);
     const qtd = getQtdNoDia(a);
     const desc = a.realizada ? calcDesconto(a.comarca, qtd) : 0;
     const total = calcTotal(a, qtd);
     if (a.realizada) { totalGeral += total; totalRealizadas++; }
 
-    const descLabel = desc > 0 ? `<span class="badge badge-gold">-${(desc*100).toFixed(0)}%</span>` : '<span class="badge badge-gray">—</span>';
-    const valorBase = a.valorBase ? `R$ ${a.valorBase.toFixed(2).replace('.',',')}` : `<span style="color:var(--red);font-size:11px;">Não cadastrado</span>`;
-    const totalLabel = a.realizada ? `<strong>R$ ${total.toFixed(2).replace('.',',')}</strong>` : `<span class="muted">—</span>`;
-
     const valorAud  = (a.valorBase && a.valorBase > 0) ? a.valorBase : 0;
-    const descPct    = (valorAud > 0 && a.realizada) ? calcDesconto(a.comarca, qtd) : 0;
-    const valorPrep  = getValorPreposto(a.comarca);
-    const audLabel   = valorAud > 0
-      ? `<span style="font-size:12px;">R$ ${valorAud.toFixed(2).replace('.',',')}</span>`
+    const descPct   = (valorAud > 0 && a.realizada) ? calcDesconto(a.comarca, qtd) : 0;
+    const valorPrep = getValorPreposto(a.comarca);
+    const audLabel  = valorAud > 0
+      ? `<span style="font-size:12px;">R$ ${fmtBRL(valorAud)}</span>`
       : `<span style="font-size:11px;color:var(--ink-faint);">Contrato</span>`;
     const descLabelV = descPct > 0
       ? `<span class="badge badge-gold" style="font-size:11px;">-${(descPct*100).toFixed(0)}%</span>`
       : `<span class="muted" style="font-size:12px;">—</span>`;
-    const prepLabel  = a.realizada
-      ? `<span style="font-size:12px;">R$ ${valorPrep.toFixed(2).replace('.',',')}</span>`
+    const prepLabel = a.realizada
+      ? `<span style="font-size:12px;">R$ ${fmtBRL(valorPrep)}</span>`
       : `<span class="muted">—</span>`;
+    const totalLabel = a.realizada ? `<strong>R$ ${fmtBRL(total)}</strong>` : `<span class="muted">—</span>`;
+
     tbody.innerHTML += `<tr id="aud-row-${idx}">
       <td style="text-align:center;"><input type="checkbox" class="del-check" data-idx="${idx}" onchange="this.closest('tr').style.opacity=this.checked?'0.5':'1'"></td>
       <td style="text-align:center;">
@@ -1228,9 +1319,9 @@ function renderAudiencias() {
   });
 
   tfoot.innerHTML = `<tr>
-    <td colspan="8" style="text-align:right; color:var(--ink-soft);">Total (realizadas)</td>
+    <td colspan="8" style="text-align:right; color:var(--ink-soft);">Total (realizadas${filtroDE||filtroATE||filtroComarca ? ' — filtrado' : ''})</td>
     <td></td>
-    <td style="color:var(--gold); font-size:15px;">R$ ${totalGeral.toFixed(2).replace('.',',')}</td>
+    <td style="color:var(--gold); font-size:15px;">R$ ${fmtBRL(totalGeral)}</td>
   </tr>`;
 
   updateStats();
@@ -1264,7 +1355,25 @@ function excluirSelecionadas() {
 }
 
 function marcarTodas(val) {
-  audiencias.forEach(a => a.realizada = val);
+  // Pega os filtros ativos
+  const filtroDE      = (document.getElementById('aud-filtro-de')      || {}).value || '';
+  const filtroATE     = (document.getElementById('aud-filtro-ate')     || {}).value || '';
+  const filtroComarca = ((document.getElementById('aud-filtro-comarca') || {}).value || '').trim().toLowerCase();
+
+  const temFiltro = filtroDE || filtroATE || filtroComarca;
+
+  if (temFiltro) {
+    // Aplica apenas às audiências visíveis no filtro atual
+    audiencias.forEach(a => {
+      if (filtroDE  && a.dataISO && a.dataISO < filtroDE)  return;
+      if (filtroATE && a.dataISO && a.dataISO > filtroATE) return;
+      if (filtroComarca && !(a.comarca || '').toLowerCase().includes(filtroComarca)) return;
+      a.realizada = val;
+    });
+  } else {
+    // Sem filtro: aplica a todas
+    audiencias.forEach(a => a.realizada = val);
+  }
   salvar();
   renderAudiencias();
 }
@@ -1278,7 +1387,7 @@ function updateStats() {
   document.getElementById('stat-total').textContent = audiencias.length;
   document.getElementById('stat-realizadas').textContent = realizadas.length;
   document.getElementById('stat-preposto').textContent = comPreposto;
-  document.getElementById('stat-valor').textContent = `R$ ${total.toFixed(2).replace('.',',')}`;
+  document.getElementById('stat-valor').textContent = `R$ ${fmtBRL(total)}`;
 }
 
 // ─── RELATÓRIO ───────────────────────────────────────────────────────────────
@@ -1346,8 +1455,8 @@ function gerarRelatorio() {
   document.getElementById('rel-cliente').textContent = cliente;
   document.getElementById('rel-qtd').textContent = filtradas.length;
   document.getElementById('rel-preposto').textContent = qtdPreposto;
-  document.getElementById('rel-honorarios').textContent = `R$ ${totalAudiencias.toFixed(2).replace('.',',')}`;
-  document.getElementById('rel-total').textContent = `R$ ${totalGeral.toFixed(2).replace('.',',')}`;
+  document.getElementById('rel-honorarios').textContent = `R$ ${fmtBRL(totalAudiencias)}`;
+  document.getElementById('rel-total').textContent = `R$ ${fmtBRL(totalGeral)}`;
   document.getElementById('rel-data-geracao').textContent = new Date().toLocaleDateString('pt-BR');
 
   // Tabela detalhada
@@ -1362,7 +1471,7 @@ function gerarRelatorio() {
     const total = calcTotal(a, qtd);
     const descLabel = desc > 0 ? `-${(desc*100).toFixed(0)}%` : '—';
     const valorBase = (a.valorBase && a.valorBase > 0)
-      ? `R$ ${a.valorBase.toFixed(2).replace('.',',')}`
+      ? `R$ ${fmtBRL(a.valorBase)}`
       : '<span style="color:var(--ink-faint);font-size:11px;">Contrato mensal</span>';
 
     const prepValRel = getValorPreposto(a.comarca);
@@ -1372,40 +1481,46 @@ function gerarRelatorio() {
       <td><strong>${a.comarca}</strong></td>
       <td class="muted" style="font-size:11px;">${a.vara}</td>
       <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${a.autor}</td>
-      <td class="muted" style="font-size:11px;">${a.processo}</td>
+      <td class="muted" style="font-size:11px; font-family:monospace; word-break:break-all; min-width:120px;">${a.processo}</td>
       <td style="font-size:11px;">${a.tipo.replace('AUDIÊNCIA DE ','').replace('AUDIÊNCIA ','')}</td>
-      <td>R$ ${prepValRel.toFixed(2).replace('.',',')}</td>
+      <td>R$ ${fmtBRL(prepValRel)}</td>
       <td style="line-height:1.5;">
         ${(a.valorBase && a.valorBase > 0) ? (
           desc > 0
-            ? `<span style="text-decoration:line-through;color:var(--ink-faint);font-size:11px;">R$ ${a.valorBase.toFixed(2).replace('.',',')}</span><br>
-               <span style="color:var(--ink);font-size:12px;font-weight:600;">R$ ${(a.valorBase*(1-desc)).toFixed(2).replace('.',',')}</span>
+            ? `<span style="text-decoration:line-through;color:var(--ink-faint);font-size:11px;">R$ ${fmtBRL(a.valorBase)}</span><br>
+               <span style="color:var(--ink);font-size:12px;font-weight:600;">R$ ${fmtBRL(a.valorBase*(1-desc))}</span>
                <span style="color:var(--green);font-size:10px;"> (-${(desc*100).toFixed(0)}%)</span>`
-            : `<span style="font-size:12px;">R$ ${a.valorBase.toFixed(2).replace('.',',')}</span>`
+            : `<span style="font-size:12px;">R$ ${fmtBRL(a.valorBase)}</span>`
         ) : '<span style="color:var(--ink-faint);font-size:11px;">Contrato mensal</span>'}
       </td>
-      <td style="font-weight:700;">R$ ${total.toFixed(2).replace('.',',')}</td>
+      <td style="font-weight:700;">R$ ${fmtBRL(total)}</td>
     </tr>`;
   });
 
   tfoot.innerHTML = `
     <tr>
       <td colspan="7" style="text-align:right; color:var(--ink-soft);">Honorários de audiência</td>
-      <td colspan="3" style="font-weight:700; color:var(--green);">R$ ${totalAudiencias.toFixed(2).replace('.',',')}</td>
+      <td colspan="3" style="font-weight:700; color:var(--green);">R$ ${fmtBRL(totalAudiencias)}</td>
     </tr>
     <tr>
       <td colspan="7" style="text-align:right; color:var(--ink-soft);">Preposto (${qtdPreposto} audiência${qtdPreposto !== 1 ? 's' : ''})</td>
-      <td colspan="3" style="font-weight:700; color:var(--gold);">R$ ${totalPreposto.toFixed(2).replace('.',',')}</td>
+      <td colspan="3" style="font-weight:700; color:var(--gold);">R$ ${fmtBRL(totalPreposto)}</td>
     </tr>
     <tr style="border-top:2px solid var(--gold);">
       <td colspan="7" style="text-align:right; font-weight:700; font-size:14px;">TOTAL A RECEBER</td>
-      <td colspan="3" style="font-weight:700; font-size:16px; color:var(--gold);">R$ ${totalGeral.toFixed(2).replace('.',',')}</td>
+      <td colspan="3" style="font-weight:700; font-size:16px; color:var(--gold);">R$ ${fmtBRL(totalGeral)}</td>
     </tr>`;
 
   document.getElementById('relatorio-empty').style.display = 'none';
   document.getElementById('relatorio-output').style.display = 'block';
   document.getElementById('btn-pdf').style.display = 'inline-flex';
   document.getElementById('btn-excel').style.display = 'inline-flex';
+}
+
+// ─── UTILITÁRIOS ──────────────────────────────────────────────────────────────
+// Formata valor monetário em padrão brasileiro: 10090 → "10.090,00"
+function fmtBRL(v) {
+  return Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
 // ─── PERSISTÊNCIA ────────────────────────────────────────────────────────────
