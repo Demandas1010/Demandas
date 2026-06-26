@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestão de Audiências — Melo e Meireles</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
 
@@ -761,22 +760,33 @@
 </main>
 
 <script>
-// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+// ─── SUPABASE (REST API direto — sem SDK) ────────────────────────────────────
 const SUPABASE_URL = 'https://rxihxsgdtkuwhdvlmvsd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4aWh4c2dkdGt1d2hkdmxtdnNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MDk0NjIsImV4cCI6MjA5Nzk4NTQ2Mn0.SpPuB9tPSyvNZjulNL25tTVLQX8e7yWUSeF2qY8cBVA';
-const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json',
+};
 
 async function sbSalvar(id, dados) {
   try {
-    await SB.from('mm_sistema').upsert({ id, dados, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    await fetch(SUPABASE_URL + '/rest/v1/mm_sistema', {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ id, dados, updated_at: new Date().toISOString() })
+    });
   } catch(e) { console.warn('Supabase save error:', e); }
 }
 
 async function sbCarregar(id) {
   try {
-    const { data, error } = await SB.from('mm_sistema').select('dados').eq('id', id).maybeSingle();
-    if (error || !data) return null;
-    return data.dados;
+    const res = await fetch(SUPABASE_URL + '/rest/v1/mm_sistema?id=eq.' + id + '&select=dados', {
+      headers: SB_HEADERS
+    });
+    const arr = await res.json();
+    if (!arr || arr.length === 0) return null;
+    return arr[0].dados;
   } catch(e) { console.warn('Supabase load error:', e); return null; }
 }
 
@@ -791,11 +801,11 @@ async function inicializarDados() {
       sbCarregar('usuarios'),
       sbCarregar('tabela_precos'),
     ]);
-    if (aud       !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    }
-    if (audExt    !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); }
-    if (preps     !== null) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); salvarPrepostos(); }
-    if (users     !== null) { Object.assign(USUARIOS, users); localStorage.setItem('mm_usuarios',    JSON.stringify(users));   }
-    if (tabela    !== null) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); }
+    if (aud    !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    }
+    if (audExt !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); }
+    if (preps  !== null) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); }
+    if (users  !== null) { Object.assign(USUARIOS, users); localStorage.setItem('mm_usuarios', JSON.stringify(users)); }
+    if (tabela !== null) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); }
   } catch(e) { console.warn('Erro ao inicializar:', e); }
   if (loadEl) loadEl.style.display = 'none';
 }
