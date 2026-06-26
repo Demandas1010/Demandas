@@ -1696,6 +1696,7 @@ const ADVS_OUTROS   = ['Lucas Fernandes','Ludmila Bulcão'];
 // Prepostos carregados do localStorage — editáveis na aba Configuração
 const PREPOSTOS_DEFAULT = ['Luiz Vitor','Janilson Lisboa','Lucas Aragão'];
 let PREPOSTOS_MM = JSON.parse(localStorage.getItem('mm_prepostos') || JSON.stringify(PREPOSTOS_DEFAULT));
+let _modalAudIdx = -1; // índice da audiência aberta no modal
 
 // PREPOSTOS_TODOS = prepostos MM + advogados (para o dropdown de troca)
 const ADVS_FIXOS = ['Fernando Cordero','Aline Florencio','Lucas Fernandes','Ludmila Bulcão'];
@@ -1795,6 +1796,12 @@ function renderPauta() {
     .sort((a,b) => (a.dataISO+(a.hora||'00:00')).localeCompare(b.dataISO+(b.hora||'00:00')))
     .map(a => {
       const chave = a.dataISO + '|' + (a.hora || '00:00');
+      // Se valores foram fixados manualmente, não realocar
+      if (a._pinned) {
+        if (a.advogado) { if (!agendaAdv[a.advogado]) agendaAdv[a.advogado] = new Set(); agendaAdv[a.advogado].add(chave); }
+        if (a.preposto) { if (!agendaPrep[a.preposto]) agendaPrep[a.preposto] = new Set(); agendaPrep[a.preposto].add(chave); }
+        return { ...a };
+      }
       const cn    = normalize(a.comarca).toUpperCase();
       let adv = '', prep = '', conflito = false;
 
@@ -1953,6 +1960,12 @@ function trocarPreposto(dataISO, processo, novoPreposto, select) {
 }
 
 function abrirModal(a) {
+  // Guardar o índice real no array global
+  _modalAudIdx = audiencias.findIndex(x => x === a);
+  if (_modalAudIdx < 0) {
+    _modalAudIdx = audiencias.findIndex(x => x.processo === a.processo && x.dataISO === a.dataISO);
+  }
+
   const tipoColor = (a.tipo||'').includes('CONCILI') ? '#2d7a4f' : (a.tipo||'').includes('INSTRU') ? '#8a2a32' : '#1a5a8a';
   const cor  = ADV_CORES[a.advogado] || '#555';
 
@@ -1966,6 +1979,30 @@ function abrirModal(a) {
       <span style="font-size:13px;color:var(--ink);flex:1;">${value}</span>
     </div>` : '';
 
+  const isAdmin = usuarioLogado && usuarioLogado.perfil === 'admin';
+  const isExt   = a.tipoRegistro === 'externo';
+  const selectStyle = 'width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:var(--white);cursor:pointer;outline:none;';
+
+  const advBlock = (isAdmin && !isExt) ? `
+    <div style="display:flex;gap:12px;align-items:center;">
+      <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint);min-width:90px;">Advogado</span>
+      <select id="modal-sel-adv" style="${selectStyle}">
+        ${ADVS_FIXOS.map(adv => `<option value="${adv}" ${advNome(adv)===advNome(a.advogado)?'selected':''}>${adv}</option>`).join('')}
+      </select>
+    </div>` :
+    row('Advogado', isExt
+      ? `<span style="background:#f0f0f5;color:#555;font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid #ccc;">⚖️ ${a.advogadoExterno||'—'}</span>`
+      : `<span style="background:${cor}18;color:${cor};font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid ${cor}30;">⚖️ ${a.advogado||'—'}</span>`);
+
+  const prepBlock = isAdmin ? `
+    <div style="display:flex;gap:12px;align-items:center;">
+      <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint);min-width:90px;">Preposto</span>
+      <select id="modal-sel-prep" style="${selectStyle}">
+        ${PREPOSTOS_TODOS.map(p => `<option value="${p}" ${advNome(p)===advNome(a.preposto)?'selected':''}>${p}</option>`).join('')}
+      </select>
+    </div>` :
+    (() => { const pc=PREP_CORES[a.preposto]||'#555'; const pb=PREP_BG[a.preposto]||'#f5f5f5'; return row('Preposto', `<span style="background:${pb};color:${pc};font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid ${pc}30;">👤 ${a.preposto||'—'}</span>`); })();
+
   document.getElementById('modal-body').innerHTML = `
     ${row('Autor', a.autor)}
     ${row('Processo', `<span style="font-family:monospace;">${a.processo||''}</span>`)}
@@ -1973,16 +2010,23 @@ function abrirModal(a) {
     ${row('Assunto', a.assunto)}
     ${row('Observação', a.observacao)}
     <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
-    ${a.tipoRegistro === 'externo'
-      ? row('Responsável', `<span style="background:#f0f0f5;color:#555;font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid #ccc;">⚖️ ${a.advogadoExterno||'—'}</span>`) + '<div style="background:#fff3cd;color:#856404;font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;margin-top:4px;">📋 Audiência externa — escritório participa como preposto</div>'
-      : row('Advogado', `<span style="background:${cor}18;color:${cor};font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid ${cor}30;">⚖️ ${a.advogado||'—'}</span>`)
-    }
-    ${row('Preposto', (() => { const pc=PREP_CORES[a.preposto]||'#555'; const pb=PREP_BG[a.preposto]||'#f5f5f5'; return `<span style="background:${pb};color:${pc};font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid ${pc}30;">👤 ${a.preposto||'—'}</span>`; })())}
+    ${isExt ? '<div style="background:#fff3cd;color:#856404;font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;margin-bottom:4px;">📋 Audiência externa — escritório participa como preposto</div>' : ''}
+    ${advBlock}
+    ${prepBlock}
     ${a.conflito ? '<div style="background:#fdeaec;color:#c0392b;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;margin-top:4px;">⚠️ Conflito de horário detectado — verificar alocação</div>' : ''}
   `;
 
   const footer = document.getElementById('modal-footer');
   footer.innerHTML = '';
+
+  if (isAdmin) {
+    const btnSalvar = document.createElement('button');
+    btnSalvar.className = 'btn btn-primary';
+    btnSalvar.textContent = '💾 Salvar alterações';
+    btnSalvar.onclick = salvarModalAlteracoes;
+    footer.appendChild(btnSalvar);
+  }
+
   if (a.link) {
     const btn = document.createElement('a');
     btn.href = a.link; btn.target = '_blank';
@@ -1990,6 +2034,7 @@ function abrirModal(a) {
     btn.innerHTML = '🔗 Entrar na Audiência';
     footer.appendChild(btn);
   }
+
   const close = document.createElement('button');
   close.className = 'btn btn-outline'; close.textContent = 'Fechar';
   close.onclick = fecharModal;
@@ -1999,8 +2044,37 @@ function abrirModal(a) {
   overlay.style.display = 'flex';
 }
 
+function salvarModalAlteracoes() {
+  if (_modalAudIdx < 0 || _modalAudIdx >= audiencias.length) return;
+
+  const selAdv  = document.getElementById('modal-sel-adv');
+  const selPrep = document.getElementById('modal-sel-prep');
+
+  if (selAdv)  audiencias[_modalAudIdx].advogado = selAdv.value;
+  if (selPrep) audiencias[_modalAudIdx].preposto = selPrep.value;
+  // Marcar como fixado manualmente para a alocação automática não sobrescrever
+  audiencias[_modalAudIdx]._pinned = true;
+
+  salvar();
+
+  // Feedback visual
+  const btn = document.querySelector('#modal-footer .btn-primary');
+  if (btn) {
+    btn.textContent = '✅ Salvo!';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = '💾 Salvar alterações'; btn.disabled = false; }, 2000);
+  }
+
+  // Atualiza as views
+  renderAudiencias();
+  if (document.getElementById('page-pauta') && document.getElementById('page-pauta').classList.contains('active')) {
+    renderPauta();
+  }
+}
+
 function fecharModal() {
   document.getElementById('modal-overlay').style.display = 'none';
+  _modalAudIdx = -1;
 }
 
 
