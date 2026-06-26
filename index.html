@@ -2488,22 +2488,32 @@ USUÁRIO LOGADO: ${usuarioLogado ? JSON.stringify(usuarioLogado) : 'nenhum'}`;
 function limparTodosOsDados() {
   if (!confirm('Isso vai apagar TODAS as audiências, usuários e dados. Tem certeza?')) return;
   if (!confirm('ÚLTIMA CONFIRMAÇÃO: Isso é irreversível. Continuar?')) return;
-  
+
+  // Limpa localStorage
   localStorage.removeItem('mm_audiencias');
   localStorage.removeItem('mm_audiencias_externas');
   localStorage.removeItem('mm_tabela_precos');
   localStorage.removeItem('mm_usuarios');
   localStorage.removeItem('mm_prepostos');
-  
+
+  // Limpa variáveis em memória
   audiencias = [];
   audienciasExternas = [];
   PREPOSTOS_MM.length = 0;
   PREPOSTOS_DEFAULT.forEach(p => PREPOSTOS_MM.push(p));
-  salvarPrepostos();
   USUARIOS = JSON.parse(JSON.stringify(USUARIOS_DEFAULT));
-  
-  alert('✅ Todos os dados foram resetados!\nA página vai recarregar.');
-  location.reload();
+
+  // Limpa Supabase (salva arrays vazios / valores padrão)
+  Promise.all([
+    sbSalvar('audiencias',          []),
+    sbSalvar('audiencias_externas', []),
+    sbSalvar('prepostos',           [...PREPOSTOS_MM]),
+    sbSalvar('usuarios',            USUARIOS_DEFAULT),
+    sbSalvar('tabela_precos',       []),
+  ]).then(() => {
+    alert('✅ Todos os dados foram resetados!\nA página vai recarregar.');
+    location.reload();
+  });
 }
 
 
