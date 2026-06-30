@@ -803,9 +803,16 @@ async function inicializarDados() {
     ]);
     if (aud    !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    }
     if (audExt !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); }
-    if (preps  !== null) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); }
+    if (preps  !== null && preps.length > 0) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); }
     if (users  !== null) { Object.assign(USUARIOS, users); localStorage.setItem('mm_usuarios', JSON.stringify(users)); }
-    if (tabela !== null) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); tabelaPrecos = tabela; }
+    if (tabela !== null && tabela.length > 0) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); tabelaPrecos = tabela; }
+    // Se a tabela de preços do Supabase veio vazia/corrompida, restaura o padrão e regrava no Supabase
+    if (tabela !== null && tabela.length === 0) {
+      tabelaPrecos = TABELA_PRECOS_DEFAULT.map(r => ({...r}));
+      localStorage.setItem('mm_tabela_precos', JSON.stringify(tabelaPrecos));
+      sbSalvar('tabela_precos', tabelaPrecos);
+      console.warn('Tabela de preços veio vazia do Supabase — restaurada para o padrão automaticamente.');
+    }
   } catch(e) { console.warn('Erro ao inicializar:', e); }
   if (loadEl) loadEl.style.display = 'none';
 }
@@ -1543,8 +1550,11 @@ function gerarRelatorio() {
     const desc = calcDesconto(a.comarca, qtd);
     const total = calcTotal(a, qtd);
     const descLabel = desc > 0 ? `-${(desc*100).toFixed(0)}%` : '—';
-    const valorBase = (a.valorBase && a.valorBase > 0)
-      ? `R$ ${fmtBRL(a.valorBase)}`
+    // Sempre usa o valor ATUAL da tabela de preços (ignora o valorBase gravado na importação)
+    const vTabelaRel = getValorBase(a.comarca);
+    const vBaseRel = (vTabelaRel !== null) ? vTabelaRel : (a.valorBase ?? 0);
+    const valorBase = (vBaseRel > 0)
+      ? `R$ ${fmtBRL(vBaseRel)}`
       : '<span style="color:var(--ink-faint);font-size:11px;">Contrato mensal</span>';
 
     const prepValRel = getValorPreposto(a.comarca);
@@ -1558,12 +1568,12 @@ function gerarRelatorio() {
       <td style="font-size:11px;">${a.tipo.replace('AUDIÊNCIA DE ','').replace('AUDIÊNCIA ','')}</td>
       <td>R$ ${fmtBRL(prepValRel)}</td>
       <td style="line-height:1.5;">
-        ${(a.valorBase && a.valorBase > 0) ? (
+        ${(vBaseRel > 0) ? (
           desc > 0
-            ? `<span style="text-decoration:line-through;color:var(--ink-faint);font-size:11px;">R$ ${fmtBRL(a.valorBase)}</span><br>
-               <span style="color:var(--ink);font-size:12px;font-weight:600;">R$ ${fmtBRL(a.valorBase*(1-desc))}</span>
+            ? `<span style="text-decoration:line-through;color:var(--ink-faint);font-size:11px;">R$ ${fmtBRL(vBaseRel)}</span><br>
+               <span style="color:var(--ink);font-size:12px;font-weight:600;">R$ ${fmtBRL(vBaseRel*(1-desc))}</span>
                <span style="color:var(--green);font-size:10px;"> (-${(desc*100).toFixed(0)}%)</span>`
-            : `<span style="font-size:12px;">R$ ${fmtBRL(a.valorBase)}</span>`
+            : `<span style="font-size:12px;">R$ ${fmtBRL(vBaseRel)}</span>`
         ) : '<span style="color:var(--ink-faint);font-size:11px;">Contrato mensal</span>'}
       </td>
       <td style="font-weight:700;">R$ ${fmtBRL(total)}</td>
