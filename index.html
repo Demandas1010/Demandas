@@ -1899,33 +1899,50 @@ function renderPauta() {
     .sort((a,b) => (a.dataISO+(a.hora||'00:00')).localeCompare(b.dataISO+(b.hora||'00:00')))
     .map(a => {
       const chave = a.dataISO + '|' + (a.hora || '00:00');
-      // Se valores foram fixados manualmente, não realocar
-      if (a._pinned) {
-        if (a.advogado) { if (!agendaAdv[a.advogado]) agendaAdv[a.advogado] = new Set(); agendaAdv[a.advogado].add(chave); }
-        if (a.preposto) { if (!agendaPrep[a.preposto]) agendaPrep[a.preposto] = new Set(); agendaPrep[a.preposto].add(chave); }
+      const cn    = normalize(a.comarca).toUpperCase();
+
+      // Define a lista de advogados elegíveis pela regra da comarca (sempre vale, mesmo se fixada)
+      let listaAdv, prepFixoAltamira = null;
+      if (cn.includes('ALTAMIRA')) {
+        listaAdv = ADVS_ALTAMIRA;
+      } else if (cn.includes('MARABA') || cn.includes('MARAB')) {
+        listaAdv = ['Ludmila Bulcão'];
+      } else if (cn.includes('PARAGOMINAS') || cn.includes('ULIANOPOLIS') || cn.includes('ULIAN') || cn.includes('SANTAREM') || cn.includes('SANTAR')) {
+        listaAdv = ['Lucas Fernandes'];
+      } else {
+        listaAdv = ADVS_OUTROS;
+      }
+
+      // Audiência fixada manualmente: só pula a alocação automática para os campos JÁ preenchidos.
+      // Campos em branco (ex: cadastro manual sem advogado) continuam sendo preenchidos pela regra da comarca.
+      if (a._pinned && a.advogado && a.preposto) {
+        if (!agendaAdv[a.advogado]) agendaAdv[a.advogado] = new Set(); agendaAdv[a.advogado].add(chave);
+        if (!agendaPrep[a.preposto]) agendaPrep[a.preposto] = new Set(); agendaPrep[a.preposto].add(chave);
         return { ...a };
       }
-      const cn    = normalize(a.comarca).toUpperCase();
-      let adv = '', prep = '', conflito = false;
 
-      if (cn.includes('ALTAMIRA')) {
-        const r1 = alocarPauta(ADVS_ALTAMIRA, agendaAdv, chave);
-        adv  = r1.nome;
-        prep = adv.includes('Fernando') ? 'Aline Florencio' : 'Fernando Cordero';
-        conflito = r1.conflito;
-      } else if (cn.includes('MARABA') || cn.includes('MARAB')) {
-        const r1 = alocarPauta(['Ludmila Bulcão'], agendaAdv, chave);
-        const r2 = alocarPauta(PREPOSTOS_MM, agendaPrep, chave);
-        adv = r1.nome; prep = r2.nome; conflito = r1.conflito || r2.conflito;
-      } else if (cn.includes('PARAGOMINAS') || cn.includes('ULIANOPOLIS') || cn.includes('ULIAN') || cn.includes('SANTAREM') || cn.includes('SANTAR')) {
-        const r1 = alocarPauta(['Lucas Fernandes'], agendaAdv, chave);
-        const r2 = alocarPauta(PREPOSTOS_MM, agendaPrep, chave);
-        adv = r1.nome; prep = r2.nome; conflito = r1.conflito || r2.conflito;
+      let adv = a.advogado || '', prep = a.preposto || '', conflito = false;
+
+      if (a._pinned && adv) {
+        // Advogado já fixado — só registra na agenda
+        if (!agendaAdv[adv]) agendaAdv[adv] = new Set(); agendaAdv[adv].add(chave);
       } else {
-        const r1 = alocarPauta(ADVS_OUTROS,  agendaAdv,  chave);
-        const r2 = alocarPauta(PREPOSTOS_MM, agendaPrep, chave);
-        adv = r1.nome; prep = r2.nome; conflito = r1.conflito || r2.conflito;
+        const r1 = alocarPauta(listaAdv, agendaAdv, chave);
+        adv = r1.nome;
+        conflito = conflito || r1.conflito;
       }
+
+      if (a._pinned && prep) {
+        // Preposto já fixado — só registra na agenda
+        if (!agendaPrep[prep]) agendaPrep[prep] = new Set(); agendaPrep[prep].add(chave);
+      } else if (cn.includes('ALTAMIRA')) {
+        prep = adv.includes('Fernando') ? 'Aline Florencio' : 'Fernando Cordero';
+      } else {
+        const r2 = alocarPauta(PREPOSTOS_MM, agendaPrep, chave);
+        prep = r2.nome;
+        conflito = conflito || r2.conflito;
+      }
+
       return { ...a, advogado: adv, preposto: prep, conflito };
     });
 
