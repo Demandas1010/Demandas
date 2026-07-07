@@ -2989,7 +2989,17 @@ function limparFormCadastro() {
   if (prep) prep.selectedIndex = 0;
 }
 
-// Init
+// Init — carrega usuários do Supabase ANTES de mostrar tela de login
+// Assim qualquer máquina nova já conhece todos os usuários cadastrados
+(async () => {
+  try {
+    const users = await sbCarregar('usuarios');
+    if (users !== null && Object.keys(users).length > 0) {
+      Object.assign(USUARIOS, users);
+      localStorage.setItem('mm_usuarios', JSON.stringify(USUARIOS));
+    }
+  } catch(e) { /* falha silenciosa — usa o localStorage local */ }
+})();
 updateStats();
 renderTabela();
 </script>
