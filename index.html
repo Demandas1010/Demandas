@@ -2744,7 +2744,8 @@ function renderConfig() {
 function adicionarUsuario() {
   const login = prompt('Login do novo usuário (ex: novo.usuario):');
   if (!login) return;
-  if (USUARIOS[login]) {
+  const loginNorm = login.trim().toLowerCase();
+  if (USUARIOS[loginNorm]) {
     alert('Este login já existe.');
     return;
   }
@@ -2759,8 +2760,8 @@ function adicionarUsuario() {
   if (!senha) return;
   const vinculo = perfil !== 'admin' ? prompt('Vínculo (nome de advogado/preposto, ou deixe vazio):') : null;
   
-  USUARIOS[login] = { senha, nome, perfil };
-  if (vinculo) USUARIOS[login].vinculo = vinculo;
+  USUARIOS[loginNorm] = { senha, nome, perfil };
+  if (vinculo) USUARIOS[loginNorm].vinculo = vinculo;
   salvarUsuarios();
   renderConfig();
   alert('Usuário criado com sucesso!');
