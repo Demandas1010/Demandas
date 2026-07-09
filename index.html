@@ -2500,6 +2500,7 @@ function fazerLogin() {
   }
 
   usuarioLogado = { ...u, login: user };
+  localStorage.setItem('mm_sessao', JSON.stringify({ login: user, senha: u.senha }));
   erro.style.display = 'none';
 
   // Carregar dados frescos do Supabase antes de mostrar o sistema
@@ -2538,6 +2539,7 @@ function fazerLogin() {
 
 function fazerLogout() {
   usuarioLogado = null;
+  localStorage.removeItem('mm_sessao');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-user').value = '';
   document.getElementById('login-pass').value = '';
@@ -3029,6 +3031,59 @@ function iniciarSyncPeriodico() {
     } catch(e) { /* silencioso */ }
   }, 60000); // 60 segundos
 }
+
+// Restaurar sessão salva (evita deslogar ao recarregar a página)
+(async () => {
+  const sessaoSalva = localStorage.getItem('mm_sessao');
+  if (sessaoSalva) {
+    try {
+      const { login, senha } = JSON.parse(sessaoSalva);
+      // Garante que os usuários estão carregados (do Supabase ou localStorage)
+      const usersRemoto = await sbCarregar('usuarios').catch(() => null);
+      if (usersRemoto && Object.keys(usersRemoto).length > 0) Object.assign(USUARIOS, usersRemoto);
+      const u = USUARIOS[login];
+      if (u && u.senha === senha) {
+        // Sessão válida — entra direto sem mostrar tela de login
+        usuarioLogado = { ...u, login };
+        await inicializarDados();
+        iniciarSyncPeriodico();
+        document.getElementById('login-screen').style.display = 'none';
+        const isAdmin = u.perfil === 'admin';
+        const navBtns = document.querySelectorAll('nav button');
+        if (!isAdmin) {
+          navBtns[0].style.display = 'none'; navBtns[1].style.display = 'none';
+          navBtns[2].style.display = 'none'; navBtns[3].style.display = 'none';
+          navBtns[4].style.display = '';     navBtns[5].style.display = 'none';
+          navBtns[6].style.display = 'none';
+          showPageDirect('pauta');
+        } else {
+          navBtns.forEach(b => b.style.display = '');
+        }
+        document.getElementById('user-info').innerHTML = `
+          <span style="color:rgba(255,255,255,0.7);font-size:13px;">Olá, <strong style="color:var(--gold-light);">${u.nome}</strong></span>
+          <button onclick="fazerLogout()" class="btn btn-outline btn-sm" style="color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.2);">Sair</button>
+        `;
+        const filtroDiv = document.getElementById('pauta-filtros-pessoa');
+        if (filtroDiv) {
+          filtroDiv.style.display = isAdmin ? 'flex' : 'none';
+          if (isAdmin) atualizarSelectsPrepostos();
+        }
+        if (!isAdmin) renderPauta();
+        return; // não precisa carregar usuários de novo abaixo
+      } else {
+        localStorage.removeItem('mm_sessao'); // sessão inválida — limpa
+      }
+    } catch(e) { localStorage.removeItem('mm_sessao'); }
+  }
+  // Sem sessão válida: carrega usuários do Supabase e mostra tela de login
+  try {
+    const users = await sbCarregar('usuarios');
+    if (users !== null && Object.keys(users).length > 0) {
+      Object.assign(USUARIOS, users);
+      localStorage.setItem('mm_usuarios', JSON.stringify(USUARIOS));
+    }
+  } catch(e) {}
+})();
 
 // Init — carrega usuários do Supabase ANTES de mostrar tela de login
 // Assim qualquer máquina nova já conhece todos os usuários cadastrados
