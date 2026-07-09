@@ -862,7 +862,17 @@ async function inicializarDados() {
     ]);
     if (aud    !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    }
     if (audExt !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); }
-    if (preps  !== null && preps.length > 0) { PREPOSTOS_MM.length=0; preps.forEach(p=>PREPOSTOS_MM.push(p)); localStorage.setItem('mm_prepostos', JSON.stringify(preps)); }
+    if (preps !== null && preps.length > 0) {
+      PREPOSTOS_MM.length = 0;
+      preps.forEach(p => PREPOSTOS_MM.push(p));
+      PREPOSTOS_TODOS.length = 0;
+      PREPOSTOS_MM.forEach(p => PREPOSTOS_TODOS.push(p));
+      ADVS_FIXOS.forEach(p => PREPOSTOS_TODOS.push(p));
+      localStorage.setItem('mm_prepostos', JSON.stringify(preps));
+      // Atualiza legenda e selects imediatamente após sincronizar do Supabase
+      renderLegenda();
+      atualizarSelectsPrepostos();
+    }
     if (users  !== null) { Object.assign(USUARIOS, users); localStorage.setItem('mm_usuarios', JSON.stringify(users)); }
     if (tabela !== null && tabela.length > 0) { localStorage.setItem('mm_tabela_precos', JSON.stringify(tabela)); tabelaPrecos = tabela; }
     // Se a tabela de preços do Supabase veio vazia/corrompida, restaura o padrão e regrava no Supabase
@@ -3016,10 +3026,12 @@ function iniciarSyncPeriodico() {
       let atualizado = false;
       if (aud    !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    atualizado = true; }
       if (audExt !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); atualizado = true; }
-      if (preps  !== null && preps.length > 0) {
+      if (preps !== null && preps.length > 0) {
         PREPOSTOS_MM.length = 0; preps.forEach(p => PREPOSTOS_MM.push(p));
         PREPOSTOS_TODOS.length = 0; PREPOSTOS_MM.forEach(p => PREPOSTOS_TODOS.push(p)); ADVS_FIXOS.forEach(p => PREPOSTOS_TODOS.push(p));
         localStorage.setItem('mm_prepostos', JSON.stringify(preps));
+        renderLegenda();
+        atualizarSelectsPrepostos();
         atualizado = true;
       }
       if (atualizado) {
