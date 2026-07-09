@@ -663,18 +663,8 @@
       </div>
     </div>
 
-    <!-- Legenda de cores -->
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:center;" class="no-print">
-      <span style="font-size:12px;color:var(--ink-soft);font-weight:600;">ADVOGADOS:</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:#2d5fa6;display:inline-block;"></span>Fernando Cordero</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:#6a3d9a;display:inline-block;"></span>Aline Florencio</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:#2d7a4f;display:inline-block;"></span>Lucas Fernandes</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:#c0732a;display:inline-block;"></span>Ludmila Bulcão</span>
-      <span style="margin-left:16px;font-size:12px;color:var(--ink-soft);font-weight:600;">PREPOSTOS:</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:50%;background:#c9a84c;display:inline-block;"></span>Luiz Vitor</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:50%;background:#4a90d9;display:inline-block;"></span>Janilson Lisboa</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:50%;background:#e06c75;display:inline-block;"></span>Lucas Aragão</span>
-    </div>
+    <!-- Legenda de cores — renderizada dinamicamente -->
+    <div id="legenda-cores" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:center;" class="no-print"></div>
 
     <div id="pauta-container"></div>
   </div>
@@ -1956,7 +1946,25 @@ function limparPauta() {
   document.getElementById('pauta-fim').value = '';
 }
 
+function renderLegenda() {
+  const el = document.getElementById('legenda-cores');
+  if (!el) return;
+  const COR_FALLBACK = ['#7a5c99','#2a7a6a','#8a3a5a','#3a6a2a','#5a3a8a','#8a6a2a'];
+  let html = '<span style="font-size:12px;color:var(--ink-soft);font-weight:600;">ADVOGADOS:</span>';
+  ADVS_FIXOS.forEach(adv => {
+    const cor = ADV_CORES[advNome(adv)] || ADV_CORES[adv] || '#555';
+    html += `<span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:${cor};display:inline-block;"></span>${adv}</span>`;
+  });
+  html += '<span style="margin-left:16px;font-size:12px;color:var(--ink-soft);font-weight:600;">PREPOSTOS:</span>';
+  PREPOSTOS_MM.forEach((p, i) => {
+    const cor = PREP_CORES[advNome(p)] || PREP_CORES[p] || COR_FALLBACK[i % COR_FALLBACK.length];
+    html += `<span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:12px;height:12px;border-radius:50%;background:${cor};display:inline-block;"></span>${p}</span>`;
+  });
+  el.innerHTML = html;
+}
+
 function renderPauta() {
+  renderLegenda();
   const inicio = document.getElementById('pauta-inicio').value;
   const fim    = document.getElementById('pauta-fim').value;
   const container = document.getElementById('pauta-container');
@@ -2494,6 +2502,7 @@ function fazerLogin() {
   // Carregar dados frescos do Supabase antes de mostrar o sistema
   inicializarDados().then(() => {
     document.getElementById('login-screen').style.display = 'none';
+    iniciarSyncPeriodico();
 
     const isAdmin = u.perfil === 'admin';
     const navBtns = document.querySelectorAll('nav button');
@@ -2987,6 +2996,35 @@ function limparFormCadastro() {
   if (reg) { reg.selectedIndex = 0; toggleCadExterno('MM'); }
   const prep = document.getElementById('cad-preposto');
   if (prep) prep.selectedIndex = 0;
+}
+
+// Sync periódico: a cada 60s atualiza audiências do Supabase para refletir mudanças do admin
+function iniciarSyncPeriodico() {
+  setInterval(async () => {
+    if (!document.getElementById('login-screen') || document.getElementById('login-screen').style.display === 'flex') return;
+    try {
+      const [aud, audExt, preps] = await Promise.all([
+        sbCarregar('audiencias'),
+        sbCarregar('audiencias_externas'),
+        sbCarregar('prepostos'),
+      ]);
+      let atualizado = false;
+      if (aud    !== null) { audiencias         = aud;    localStorage.setItem('mm_audiencias',          JSON.stringify(aud));    atualizado = true; }
+      if (audExt !== null) { audienciasExternas = audExt; localStorage.setItem('mm_audiencias_externas', JSON.stringify(audExt)); atualizado = true; }
+      if (preps  !== null && preps.length > 0) {
+        PREPOSTOS_MM.length = 0; preps.forEach(p => PREPOSTOS_MM.push(p));
+        PREPOSTOS_TODOS.length = 0; PREPOSTOS_MM.forEach(p => PREPOSTOS_TODOS.push(p)); ADVS_FIXOS.forEach(p => PREPOSTOS_TODOS.push(p));
+        localStorage.setItem('mm_prepostos', JSON.stringify(preps));
+        atualizado = true;
+      }
+      if (atualizado) {
+        const pag = document.querySelector('.page.active');
+        if (pag && pag.id === 'page-pauta') { renderPauta(); }
+        else if (pag && pag.id === 'page-audiencias') { renderAudiencias(); }
+        else if (pag && pag.id === 'page-audiencias-ext') { renderAudienciasExt(); }
+      }
+    } catch(e) { /* silencioso */ }
+  }, 60000); // 60 segundos
 }
 
 // Init — carrega usuários do Supabase ANTES de mostrar tela de login
