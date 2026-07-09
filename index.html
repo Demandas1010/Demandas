@@ -1874,7 +1874,7 @@ const PREP_BG = {
 const ADVS_ALTAMIRA = ['Fernando Cordero','Aline Florencio'];
 const ADVS_OUTROS   = ['Lucas Fernandes','Ludmila Bulcão'];
 // Prepostos carregados do localStorage — editáveis na aba Configuração
-const PREPOSTOS_DEFAULT = ['Luiz Vitor','Janilson Lisboa','Lucas Aragão'];
+const PREPOSTOS_DEFAULT = ['Luiz Vitor','Janilson Lisboa'];
 let PREPOSTOS_MM = JSON.parse(localStorage.getItem('mm_prepostos') || JSON.stringify(PREPOSTOS_DEFAULT));
 let _modalAudIdx = -1; // índice da audiência aberta no modal
 let _modalExtIdx = -1;  // índice da audiência externa aberta no modal
@@ -1890,6 +1890,9 @@ function salvarPrepostos() {
   PREPOSTOS_TODOS.length = 0;
   PREPOSTOS_MM.forEach(p => PREPOSTOS_TODOS.push(p));
   ADVS_FIXOS.forEach(p => PREPOSTOS_TODOS.push(p));
+  // Atualiza legenda e selects imediatamente
+  renderLegenda();
+  atualizarSelectsPrepostos();
 }
 
 function advNome(s) {
