@@ -708,6 +708,8 @@
           style="padding:9px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;min-width:220px;"
           onkeydown="if(event.key==='Enter')adicionarPreposto()">
         <button class="btn btn-primary" onclick="adicionarPreposto()">+ Adicionar Preposto</button>
+        <button class="btn btn-outline" onclick="forcarSalvarPrepostos()" style="border-color:var(--gold);color:var(--gold);" title="Regrava a lista atual no Supabase">☁️ Forçar salvar no Supabase</button>
+        <span id="prep-sync-status" style="font-size:12px;color:var(--green);display:none;"></span>
       </div>
     </div>
 
@@ -2667,6 +2669,21 @@ function renderPrepostos() {
   atualizarSelectsPrepostos();
 }
 
+function forcarSalvarPrepostos() {
+  const status = document.getElementById('prep-sync-status');
+  if (status) { status.textContent = 'Salvando...'; status.style.display = 'inline'; status.style.color = 'var(--ink-soft)'; }
+  localStorage.setItem('mm_prepostos', JSON.stringify(PREPOSTOS_MM));
+  sbSalvar('prepostos', PREPOSTOS_MM)
+    .then(() => {
+      if (status) { status.textContent = '✅ Salvo no Supabase! (' + PREPOSTOS_MM.join(', ') + ')'; status.style.color = 'var(--green)'; }
+      renderLegenda();
+      setTimeout(() => { if (status) status.style.display = 'none'; }, 5000);
+    })
+    .catch(() => {
+      if (status) { status.textContent = '❌ Erro ao salvar. Verifique a conexão.'; status.style.color = 'var(--red)'; }
+    });
+}
+
 function adicionarPreposto() {
   const input = document.getElementById('novo-preposto-nome');
   const nome  = input.value.trim();
@@ -3041,7 +3058,7 @@ function iniciarSyncPeriodico() {
         else if (pag && pag.id === 'page-audiencias-ext') { renderAudienciasExt(); }
       }
     } catch(e) { /* silencioso */ }
-  }, 60000); // 60 segundos
+  }, 5000); // 5 segundos
 }
 
 // Restaurar sessão salva (evita deslogar ao recarregar a página)
