@@ -1989,7 +1989,7 @@ function renderPauta() {
     return;
   }
 
-  // 1. Junta MM + externas no período
+  // 1. Verifica se há audiências no período para exibir
   const mmNoPeriodo  = audiencias.filter(a => a.dataISO >= inicio && a.dataISO <= fim);
   const extNoPeriodo = audienciasExternas.filter(a => a.dataISO >= inicio && a.dataISO <= fim);
 
@@ -1998,26 +1998,24 @@ function renderPauta() {
     return;
   }
 
-  // 2. Aloca advogados/prepostos nas audiências MM (externas já têm preposto definido)
+  // 2. Aloca advogados/prepostos em TODAS as audiências MM (não só as do período)
+  // Isso garante alocação estável independente do filtro de datas selecionado
   const agendaAdv  = {};
   const agendaPrep = {};
 
-  // Registra externas na agenda ANTES de alocar MM
-  // Assim o balanceamento considera audiências externas já fixadas
+  // Registra TODAS as externas na agenda antes de alocar MM
   const nfnPrep = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
-  extNoPeriodo.forEach(a => {
+  audienciasExternas.forEach(a => {
     const chave = a.dataISO + '|' + (a.hora || '00:00');
     if (!a.preposto) return;
-    // Registra usando nome normalizado para bater com PREPOSTOS_MM
     const prepNorm = nfnPrep(a.preposto);
-    // Encontra o nome canônico do PREPOSTOS_MM
     const nomeCanon = PREPOSTOS_MM.find(p => nfnPrep(p) === prepNorm) || a.preposto;
     if (!agendaPrep[nomeCanon]) agendaPrep[nomeCanon] = new Set();
     agendaPrep[nomeCanon].add(chave);
   });
 
-  // Aloca MM
-  const mmAlocadas = [...mmNoPeriodo]
+  // Aloca TODAS as audiências MM (não só as do período)
+  const todasMMAlocadas = [...audiencias]
     .sort((a,b) => (a.dataISO+(a.hora||'00:00')).localeCompare(b.dataISO+(b.hora||'00:00')))
     .map(a => {
       const chave = a.dataISO + '|' + (a.hora || '00:00');
@@ -2068,11 +2066,14 @@ function renderPauta() {
       return { ...a, advogado: adv, preposto: prep, conflito };
     });
 
-  // 3. Junta tudo
+  // 3. Filtra para o período selecionado (após alocar tudo)
+  const mmAlocadas = todasMMAlocadas.filter(a => a.dataISO >= inicio && a.dataISO <= fim);
+
+  // 4. Junta tudo no período
   const todas = [...mmAlocadas, ...extNoPeriodo]
     .sort((a,b) => (a.dataISO+(a.hora||'00:00')).localeCompare(b.dataISO+(b.hora||'00:00')));
 
-  // 4. Filtro por usuário (não-admin vê só as suas)
+  // 5. Filtro por usuário (não-admin vê só as suas)
   const nfn = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
 
   let visiveis = todas;
